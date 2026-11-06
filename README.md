@@ -1,2 +1,104 @@
-# TOURNEX_ABL
+# TOURNEX — Iterasi 5: REST API v1.0 (GET, POST)
 
+Implementasi awal TOURNEX menggunakan tiga aplikasi Spring Boot yang berjalan independen:
+
+| Service | Port | Base URL | Database |
+|---|---:|---|---|
+| Tournament Service | 8081 | `http://localhost:8081/api/v1/tournaments` | H2 in-memory terpisah |
+| Team Service | 8082 | `http://localhost:8082/api/v1/teams` | H2 in-memory terpisah |
+| Match Service | 8083 | `http://localhost:8083/api/v1/matches` | H2 in-memory terpisah |
+
+## Prasyarat
+- JDK 17 atau lebih baru
+- Apache Maven 3.9+
+
+## Menjalankan service
+Jalankan setiap service dari direktori root pada terminal terpisah:
+
+```bash
+mvn -pl tournament-service spring-boot:run
+mvn -pl team-service spring-boot:run
+mvn -pl match-service spring-boot:run
+```
+
+Atau build seluruh modul:
+
+```bash
+mvn clean test
+```
+
+## Dokumentasi Swagger UI
+- Tournament: http://localhost:8081/swagger-ui.html
+- Team: http://localhost:8082/swagger-ui.html
+- Match: http://localhost:8083/swagger-ui.html
+
+OpenAPI JSON tersedia di `/v3/api-docs` pada masing-masing port.
+
+## Endpoint v1.0
+Setiap service menyediakan:
+
+| Method | Endpoint | Keterangan |
+|---|---|---|
+| GET | `/api/v1/{resources}` | Mengambil seluruh data |
+| GET | `/api/v1/{resources}/{id}` | Mengambil data berdasarkan ID |
+| POST | `/api/v1/{resources}` | Membuat data baru |
+
+POST mengembalikan HTTP `201 Created`. GET detail mengembalikan `404 Not Found` jika ID tidak ditemukan. Request tidak valid mengembalikan `400 Bad Request`.
+
+## Contoh request
+
+### Membuat tournament
+```http
+POST http://localhost:8081/api/v1/tournaments
+Content-Type: application/json
+```
+```json
+{
+  "name": "TOURNEX Open Qualifier",
+  "gameTitle": "VALORANT",
+  "description": "Turnamen komunitas",
+  "status": "REGISTRATION",
+  "startDate": "2026-12-01",
+  "endDate": "2026-12-05"
+}
+```
+
+### Membuat team
+```http
+POST http://localhost:8082/api/v1/teams
+Content-Type: application/json
+```
+```json
+{
+  "name": "Kapal Lompat",
+  "tag": "KPL",
+  "gameTitle": "VALORANT",
+  "description": "Tim peserta TOURNEX"
+}
+```
+
+### Membuat match
+```http
+POST http://localhost:8083/api/v1/matches
+Content-Type: application/json
+```
+```json
+{
+  "tournamentId": 1,
+  "teamAId": 1,
+  "teamBId": 2,
+  "scheduledAt": "2026-12-01T19:00:00",
+  "status": "SCHEDULED"
+}
+```
+
+ID pada tiap service dibuat otomatis oleh database. Pada iterasi ini `tournamentId`, `teamAId`, dan `teamBId` di Match disimpan sebagai referensi ID; validasi lintas-service belum dilakukan. H2 bersifat in-memory sehingga data akan kembali kosong ketika aplikasi dihentikan.
+
+## Pengujian
+Setiap modul memiliki pengujian integrasi berbasis JUnit 5 + Spring Boot Test + MockMvc untuk memeriksa GET, POST, dan pengambilan detail. Jalankan `mvn clean test` dari root. Struktur ini dapat dijalankan dalam pipeline CI/CD Maven.
+
+## Batasan iterasi
+Iterasi ini hanya mengimplementasikan API v1.0 untuk GET dan POST. PUT, PATCH, DELETE, API versi baru dengan breaking changes, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
+
+## Catatan model data
+Dokumen Tahap 1 menetapkan tiga service, tetapi belum merinci atribut tiap entitas. Karena itu, field pada contoh di atas merupakan rancangan awal yang eksplisit dan dapat disesuaikan dengan kesepakatan tim.
