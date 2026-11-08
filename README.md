@@ -10,7 +10,7 @@ Implementasi awal TOURNEX menggunakan tiga aplikasi Spring Boot yang berjalan in
 
 ## Prasyarat
 - JDK 17 atau lebih baru
-- Apache Maven 3.9+
+- Apache Maven 3.9+ **atau** gunakan Maven Wrapper yang sudah disertakan (`mvnw` / `mvnw.cmd`)
 
 ## Menjalankan service
 Jalankan setiap service dari direktori root pada terminal terpisah:
@@ -21,10 +21,26 @@ mvn -pl team-service spring-boot:run
 mvn -pl match-service spring-boot:run
 ```
 
+Jika Maven belum terpasang di PATH, gunakan wrapper:
+
+```bash
+# Windows
+.\mvnw.cmd -pl tournament-service spring-boot:run
+.\mvnw.cmd -pl team-service spring-boot:run
+.\mvnw.cmd -pl match-service spring-boot:run
+
+# Linux/macOS
+./mvnw -pl tournament-service spring-boot:run
+./mvnw -pl team-service spring-boot:run
+./mvnw -pl match-service spring-boot:run
+```
+
 Atau build seluruh modul:
 
 ```bash
 mvn clean test
+# atau
+.\mvnw.cmd clean test
 ```
 
 ## Dokumentasi Swagger UI
@@ -32,7 +48,7 @@ mvn clean test
 - Team: http://localhost:8082/swagger-ui.html
 - Match: http://localhost:8083/swagger-ui.html
 
-OpenAPI JSON tersedia di `/v3/api-docs` pada masing-masing port.
+OpenAPI JSON tersedia di `/v3/api-docs` pada masing-masing port. Spesifikasi OpenAPI statis hasil ekspor tersedia di direktori `docs/openapi/`.
 
 ## Endpoint v1.0
 Setiap service menyediakan:
