@@ -1,4 +1,4 @@
-# TOURNEX — Iterasi 5: REST API v1.0 (GET, POST)
+# TOURNEX — Iterasi 5: REST API v1.0 (GET, POST, PUT, PATCH, DELETE)
 
 Implementasi awal TOURNEX menggunakan tiga aplikasi Spring Boot yang berjalan independen:
 
@@ -42,8 +42,11 @@ Setiap service menyediakan:
 | GET | `/api/v1/{resources}` | Mengambil seluruh data |
 | GET | `/api/v1/{resources}/{id}` | Mengambil data berdasarkan ID |
 | POST | `/api/v1/{resources}` | Membuat data baru |
+| PUT | `/api/v1/{resources}/{id}` | Mengganti seluruh data |
+| PATCH | `/api/v1/{resources}/{id}` | Memperbarui sebagian data |
+| DELETE | `/api/v1/{resources}/{id}` | Menghapus data |
 
-POST mengembalikan HTTP `201 Created`. GET detail mengembalikan `404 Not Found` jika ID tidak ditemukan. Request tidak valid mengembalikan `400 Bad Request`.
+POST mengembalikan HTTP `201 Created`. PUT dan PATCH mengembalikan `200 OK`. DELETE mengembalikan `204 No Content`. Operasi by ID mengembalikan `404 Not Found` jika data tidak ditemukan, dan request tidak valid mengembalikan `400 Bad Request`.
 
 ## Contoh request
 
@@ -92,13 +95,45 @@ Content-Type: application/json
 }
 ```
 
+### Mengganti tournament (PUT)
+```http
+PUT http://localhost:8081/api/v1/tournaments/1
+Content-Type: application/json
+```
+```json
+{
+  "name": "TOURNEX Finals",
+  "gameTitle": "VALORANT",
+  "description": "Babak final",
+  "status": "ONGOING",
+  "startDate": "2026-12-02",
+  "endDate": "2026-12-06"
+}
+```
+
+### Memperbarui sebagian team (PATCH)
+```http
+PATCH http://localhost:8082/api/v1/teams/1
+Content-Type: application/json
+```
+```json
+{
+  "description": "Deskripsi terbaru"
+}
+```
+
+### Menghapus match (DELETE)
+```http
+DELETE http://localhost:8083/api/v1/matches/1
+```
+
 ID pada tiap service dibuat otomatis oleh database. Pada iterasi ini `tournamentId`, `teamAId`, dan `teamBId` di Match disimpan sebagai referensi ID; validasi lintas-service belum dilakukan. H2 bersifat in-memory sehingga data akan kembali kosong ketika aplikasi dihentikan.
 
 ## Pengujian
 Setiap modul memiliki pengujian integrasi berbasis JUnit 5 + Spring Boot Test + MockMvc untuk memeriksa GET, POST, dan pengambilan detail. Jalankan `mvn clean test` dari root. Struktur ini dapat dijalankan dalam pipeline CI/CD Maven.
 
 ## Batasan iterasi
-Iterasi ini hanya mengimplementasikan API v1.0 untuk GET dan POST. PUT, PATCH, DELETE, API versi baru dengan breaking changes, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
+Iterasi ini mengimplementasikan API v1.0 untuk GET, POST, PUT, PATCH, dan DELETE. API versi baru dengan breaking changes, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
 
 ## Catatan model data
 Dokumen Tahap 1 menetapkan tiga service, tetapi belum merinci atribut tiap entitas. Karena itu, field pada contoh di atas merupakan rancangan awal yang eksplisit dan dapat disesuaikan dengan kesepakatan tim.
