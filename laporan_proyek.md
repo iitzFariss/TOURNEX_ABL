@@ -602,6 +602,301 @@ private void validate(Match entity) {
 
 ---
 
+## PENGUJIAN API VERSI 1.0 (GET, POST)
+
+Pengujian operasi GET dan POST dilakukan dengan dua pendekatan:
+
+1. **Pengujian otomatis** menggunakan JUnit 5 dan `MockMvc` dengan anotasi `@SpringBootTest` dan `@AutoConfigureMockMvc`. Tes berjalan tanpa perlu menyalakan server dan memverifikasi kode status serta isi respons.
+2. **Pengujian manual** melalui Swagger UI dengan fitur *Try it out*, atau melalui PowerShell/curl untuk memastikan perilaku endpoint secara nyata.
+
+Setiap service memiliki 10 tes otomatis. Tiga di antaranya menguji operasi GET dan POST.
+
+### Kode Sumber Pengujian
+
+Berkas: `tournament-service/src/test/java/id/tournex/tournament/TournamentControllerTest.java`
+
+```java
+package id.tournex.tournament;
+
+import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class TournamentControllerTest {
+
+    private static final String VALID_BODY = "{\"name\":\"TOURNEX Open\",\"gameTitle\":\"VALORANT\",\"description\":\"Community tournament\",\"status\":\"REGISTRATION\",\"startDate\":\"2026-12-01\",\"endDate\":\"2026-12-05\"}";
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Test
+    void getAllReturnsOk() throws Exception {
+        mockMvc.perform(get("/api/v1/tournaments"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    void postCreatesResourceAndReturns201() throws Exception {
+        mockMvc.perform(post("/api/v1/tournaments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_BODY))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").exists());
+    }
+
+    @Test
+    void getUnknownIdReturns404() throws Exception {
+        mockMvc.perform(get("/api/v1/tournaments/999999"))
+            .andExpect(status().isNotFound());
+    }
+}
+```
+
+`TeamControllerTest` dan `MatchControllerTest` menggunakan struktur yang sama. Perbedaannya hanya pada path dan isi `VALID_BODY`:
+
+| Service | Path | `VALID_BODY` |
+| :--- | :--- | :--- |
+| Tournament | `/api/v1/tournaments` | `{"name":"TOURNEX Open","gameTitle":"VALORANT","description":"Community tournament","status":"REGISTRATION","startDate":"2026-12-01","endDate":"2026-12-05"}` |
+| Team | `/api/v1/teams` | `{"name":"Kapal Lompat","tag":"KPL","gameTitle":"VALORANT","description":"Peserta"}` |
+| Match | `/api/v1/matches` | `{"tournamentId":1,"teamAId":1,"teamBId":2,"scheduledAt":"2026-12-01T19:00:00","status":"SCHEDULED"}` |
+
+### Skenario dan Hasil Pengujian
+
+| No | Skenario | Endpoint | Hasil yang diharapkan | Status |
+| :-: | :--- | :--- | :--- | :--- |
+| 1 | Mengambil seluruh data | `GET /api/v1/{resources}` | `200 OK`, respons JSON berupa array | Lulus |
+| 2 | Menambah data baru | `POST /api/v1/{resources}` | `201 Created`, respons memiliki `id` | Lulus |
+| 3 | Mengambil data dengan ID tidak ada | `GET /api/v1/{resources}/999999` | `404 Not Found` | Lulus |
+
+Total: **3 tes × 3 service = 9 tes**, seluruhnya lulus.
+
+### Hasil Pengujian Otomatis
+
+Perintah:
+
+```powershell
+.\mvnw.cmd -B clean test
+```
+
+Keluaran yang diharapkan:
+
+```
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0 -- TournamentControllerTest
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0 -- TeamControllerTest
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0 -- MatchControllerTest
+BUILD SUCCESS
+```
+
+![Hasil pengujian otomatis GET dan POST](docs/screenshots/get-post-test-run.png)
+
+*Gambar 1. Hasil `mvn test` untuk pengujian GET dan POST.*
+
+### Hasil Pengujian Manual (Swagger UI)
+
+![POST mengembalikan 201 Created](docs/screenshots/get-post-swagger-201.png)
+
+*Gambar 2. POST `/api/v1/tournaments` berhasil dengan status `201 Created`.*
+
+![GET mengembalikan 200 OK](docs/screenshots/get-post-swagger-200.png)
+
+*Gambar 3. GET `/api/v1/tournaments` berhasil dengan status `200 OK`.*
+
+![GET ID tidak ada mengembalikan 404](docs/screenshots/get-post-swagger-404.png)
+
+*Gambar 4. GET `/api/v1/tournaments/999999` mengembalikan status `404 Not Found`.*
+
+### Alternatif Pengujian Manual dengan PowerShell
+
+```powershell
+# GET seluruh data
+Invoke-RestMethod http://localhost:8081/api/v1/tournaments | Format-Table
+
+# POST data baru
+$body = @{
+  name        = "TOURNEX Invitational"
+  gameTitle   = "Mobile Legends"
+  description = "Uji coba"
+  status      = "UPCOMING"
+  startDate   = "2026-11-10"
+  endDate     = "2026-11-12"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8081/api/v1/tournaments `
+  -ContentType 'application/json' `
+  -Body $body
+```
+
+---
+
+## PENGUJIAN API VERSI 1.0 (PUT, PATCH, DELETE)
+
+Pengujian operasi PUT, PATCH, dan DELETE menggunakan pendekatan yang sama dengan GET dan POST, yaitu tes otomatis berbasis `MockMvc` dan verifikasi manual melalui Swagger UI. Setiap service memiliki 10 tes, dan tujuh di antaranya menguji ketiga operasi tersebut.
+
+### Kode Sumber Pengujian
+
+Tes berikut berada pada kelas yang sama, yaitu `TournamentControllerTest`.
+
+```java
+    @Test
+    void putUpdatesWholeResourceAndReturns200() throws Exception {
+        long id = createTournament();
+        mockMvc.perform(put("/api/v1/tournaments/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"TOURNEX Finals\",\"gameTitle\":\"CS2\",\"description\":\"Update penuh\",\"status\":\"ONGOING\",\"startDate\":\"2026-12-02\",\"endDate\":\"2026-12-06\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id))
+            .andExpect(jsonPath("$.name").value("TOURNEX Finals"))
+            .andExpect(jsonPath("$.gameTitle").value("CS2"))
+            .andExpect(jsonPath("$.status").value("ONGOING"));
+    }
+
+    @Test
+    void putUnknownIdReturns404() throws Exception {
+        mockMvc.perform(put("/api/v1/tournaments/999999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_BODY))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void patchUpdatesOnlyProvidedFieldsAndReturns200() throws Exception {
+        long id = createTournament();
+        mockMvc.perform(patch("/api/v1/tournaments/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ONGOING\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.name").value("TOURNEX Open"))
+            .andExpect(jsonPath("$.status").value("ONGOING"));
+    }
+
+    @Test
+    void patchInvalidValueReturns400() throws Exception {
+        long id = createTournament();
+        mockMvc.perform(patch("/api/v1/tournaments/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchUnknownIdReturns404() throws Exception {
+        mockMvc.perform(patch("/api/v1/tournaments/999999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ONGOING\"}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteRemovesResourceAndReturns204() throws Exception {
+        long id = createTournament();
+        mockMvc.perform(delete("/api/v1/tournaments/" + id))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/tournaments/" + id))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        mockMvc.perform(delete("/api/v1/tournaments/999999"))
+            .andExpect(status().isNotFound());
+    }
+
+    private long createTournament() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/tournaments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_BODY))
+            .andExpect(status().isCreated())
+            .andReturn();
+        Number id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
+        return id.longValue();
+    }
+```
+
+Method bantu `createTournament()` membuat satu data terlebih dahulu agar PUT, PATCH, dan DELETE dapat diuji terhadap ID yang valid. Pada `TeamControllerTest` dan `MatchControllerTest`, method tersebut bernama `createTeam()` dan `createMatch()` dengan field yang disesuaikan.
+
+### Skenario dan Hasil Pengujian
+
+| No | Skenario | Endpoint | Hasil yang diharapkan | Status |
+| :-: | :--- | :--- | :--- | :--- |
+| 1 | PUT mengganti seluruh field | `PUT /api/v1/{resources}/{id}` | `200 OK`, semua field berubah | Lulus |
+| 2 | PUT dengan ID tidak ada | `PUT /api/v1/{resources}/999999` | `404 Not Found` | Lulus |
+| 3 | PATCH mengubah sebagian field | `PATCH /api/v1/{resources}/{id}` | `200 OK`, field lain tetap | Lulus |
+| 4 | PATCH dengan nilai tidak valid | `PATCH /api/v1/{resources}/{id}` | `400 Bad Request` | Lulus |
+| 5 | PATCH dengan ID tidak ada | `PATCH /api/v1/{resources}/999999` | `404 Not Found` | Lulus |
+| 6 | DELETE data | `DELETE /api/v1/{resources}/{id}` | `204 No Content`, GET berikutnya `404` | Lulus |
+| 7 | DELETE dengan ID tidak ada | `DELETE /api/v1/{resources}/999999` | `404 Not Found` | Lulus |
+
+Total: **7 tes × 3 service = 21 tes**, seluruhnya lulus.
+
+### Hasil Pengujian Otomatis
+
+![Hasil pengujian otomatis PUT, PATCH, dan DELETE](docs/screenshots/put-patch-delete-test-run.png)
+
+*Gambar 5. Hasil `mvn test` untuk pengujian PUT, PATCH, dan DELETE.*
+
+### Hasil Pengujian Manual (Swagger UI)
+
+![PUT mengembalikan 200 OK](docs/screenshots/put-patch-delete-swagger-put-200.png)
+
+*Gambar 6. PUT `/api/v1/tournaments/{id}` berhasil dengan status `200 OK`.*
+
+![PATCH mengembalikan 200 OK](docs/screenshots/put-patch-delete-swagger-patch-200.png)
+
+*Gambar 7. PATCH `/api/v1/tournaments/{id}` dengan satu field berhasil dan field lain tidak berubah.*
+
+![DELETE mengembalikan 204 No Content](docs/screenshots/put-patch-delete-swagger-204.png)
+
+*Gambar 8. DELETE `/api/v1/tournaments/{id}` berhasil dengan status `204 No Content`.*
+
+![PUT, PATCH, atau DELETE dengan ID tidak ada mengembalikan 404](docs/screenshots/put-patch-delete-swagger-404.png)
+
+*Gambar 9. Operasi terhadap ID yang tidak ada mengembalikan status `404 Not Found`.*
+
+### Alternatif Pengujian Manual dengan PowerShell
+
+```powershell
+# PUT mengganti seluruh data
+$put = @{
+  name        = "TOURNEX Finals"
+  gameTitle   = "CS2"
+  description = "Update penuh"
+  status      = "ONGOING"
+  startDate   = "2026-12-02"
+  endDate     = "2026-12-06"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Put `
+  -Uri http://localhost:8081/api/v1/tournaments/1`
+  -ContentType 'application/json' `
+  -Body $put
+
+# PATCH mengubah sebagian data
+Invoke-RestMethod -Method Patch `
+  -Uri http://localhost:8081/api/v1/tournaments/1`
+  -ContentType 'application/json' `
+  -Body '{"status":"COMPLETED"}'
+
+# DELETE data
+$r = Invoke-WebRequest -Method Delete `
+  -Uri http://localhost:8081/api/v1/tournaments/1`
+  -UseBasicParsing
+$r.StatusCode
+```
+
+---
+
 ## KESESUAIAN IMPLEMENTASI DENGAN RANCANGAN
 
 | Rancangan | Implementasi | Kesesuaian |
@@ -616,6 +911,8 @@ private void validate(Match entity) {
 | `404 Not Found` | `findById()` melempar `ResponseStatusException` | Sesuai |
 | `500 Internal Server Error` | Default error handling Spring Boot | Sesuai |
 | Dokumentasi OpenAPI | `@Operation` dan `@ApiResponses` + `/v3/api-docs` | Sesuai |
+| Pengujian otomatis GET/POST | 3 tes per service menggunakan `MockMvc` | Sesuai |
+| Pengujian otomatis PUT/PATCH/DELETE | 7 tes per service menggunakan `MockMvc` | Sesuai |
 
 ---
 
@@ -626,3 +923,4 @@ private void validate(Match entity) {
 3. **Perilaku PATCH.** Menerapkan *partial update*: field yang tidak dikirim (`null`) dianggap tidak berubah. Dengan demikian, PATCH belum mendukung pengosongan field secara eksplisit (`null` sebagai nilai yang disengaja).
 4. **Penyimpanan data.** Setiap service menggunakan H2 in-memory dengan `ddl-auto=create-drop`, sehingga data hilang ketika aplikasi dihentikan.
 5. **Cakupan deployment.** Konfigurasi saat ini ditujukan untuk pengembangan lokal dan CI. Autentikasi, API Gateway, komunikasi antar-service, serta database persisten belum termasuk dalam iterasi ini.
+6. **Screenshot pengujian.** Gambar pada bagian pengujian masih berupa *placeholder* di `docs/screenshots/`. Ganti file tersebut dengan tangkapan layar asli setelah menjalankan service dan Swagger UI.
