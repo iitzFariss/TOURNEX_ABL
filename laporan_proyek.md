@@ -897,6 +897,270 @@ $r.StatusCode
 
 ---
 
+## IMPLEMENTASI API VERSI 2.0 (GET, POST)
+
+Implementasi v2.0 pada iterasi ini mencakup operasi **GET** dan **POST**. Kode v2 ditempatkan pada paket terpisah (`v2`) di masing-masing service, sehingga perilaku dan kontrak v1.0 tidak berubah. Pendekatan ini memungkinkan kedua versi berjalan berdampingan pada aplikasi dan port yang sama.
+
+### Build Properties
+
+Tidak ada perubahan pada `pom.xml`. Seluruh kebutuhan implementasi v2 sudah tersedia dari dependency yang dipakai v1:
+
+| Kebutuhan v2 | Penyedia |
+| :--- | :--- |
+| Pagination (`Page`, `Pageable`, `PageableDefault`) | `spring-boot-starter-data-jpa` |
+| Validasi DTO (`@NotBlank`, `@NotNull`, `@Pattern`, `@Positive`) | `spring-boot-starter-validation` |
+| Serialisasi `OffsetDateTime` | Jackson (bawaan `spring-boot-starter-web`) |
+| Dokumentasi OpenAPI v2 | `springdoc-openapi-starter-webmvc-ui` |
+| Java `record` untuk DTO | Java 17 |
+
+Konfigurasi compiler tetap sama:
+
+```xml
+<release>17</release>
+<parameters>true</parameters>
+```
+
+### Konfigurasi Deployment
+
+Tidak ada perubahan pada `application.properties`. v1 dan v2 dibedakan melalui base path, bukan melalui port atau aplikasi terpisah.
+
+| Service | Port | Base path v1 | Base path v2 |
+| :--- | ---: | :--- | :--- |
+| Tournament | 8081 | `/api/v1/tournaments` | `/api/v2/tournaments` |
+| Team | 8082 | `/api/v1/teams` | `/api/v2/teams` |
+| Match | 8083 | `/api/v1/matches` | `/api/v2/matches` |
+
+Struktur paket v2:
+
+```
+tournament-service/src/main/java/id/tournex/tournament/v2/
+├── TournamentV2Controller.java
+├── TournamentV2Request.java
+├── TournamentV2Response.java
+├── TournamentV2Mapper.java
+├── PageResponse.java
+├── ErrorResponse.java
+└── ApiExceptionHandler.java
+```
+
+Struktur yang sama diterapkan pada `team-service` (`id.tournex.team.v2`) dan `match-service` (`id.tournex.match.v2`).
+
+Endpoint v2 juga otomatis muncul pada dokumentasi OpenAPI di `/v3/api-docs` dan Swagger UI, berdampingan dengan endpoint v1.
+
+### Kode Sumber Utama GET & POST
+
+#### `TournamentV2Controller.java`
+
+```java
+@RestController
+@RequestMapping("/api/v2/tournaments")
+@Tag(name = "Tournament API v2", description = "Operasi API Tournament versi 2.0")
+public class TournamentV2Controller {
+
+    private final TournamentRepository repository;
+
+    public TournamentV2Controller(TournamentRepository repository) {
+        this.repository = repository;
+    }
+
+    @GetMapping
+    @Operation(summary = "Mengambil daftar turnamen dengan pagination")
+    public PageResponse<TournamentV2Response> getAll(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String game,
+            @PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        Page<Tournament> page;
+        if (status != null && game != null) {
+            page = repository.findByStatusAndGameTitle(status, game, pageable);
+        } else if (status != null) {
+            page = repository.findByStatus(status, pageable);
+        } else if (game != null) {
+            page = repository.findByGameTitle(game, pageable);
+        } else {
+            page = repository.findAll(pageable);
+        }
+        return PageResponse.from(page.map(TournamentV2Mapper::toResponse));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Mengambil turnamen berdasarkan ID")
+    public TournamentV2Response getById(@PathVariable Long id) {
+        return TournamentV2Mapper.toResponse(findById(id));
+    }
+
+    @PostMapping
+    @Operation(summary = "Menambah turnamen")
+    public ResponseEntity<TournamentV2Response> create(@Valid @RequestBody TournamentV2Request request) {
+        Tournament saved = repository.save(TournamentV2Mapper.toEntity(request));
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(saved.getId())
+                .toUri();
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .location(location)
+                .body(TournamentV2Mapper.toResponse(saved));
+    }
+
+    private Tournament findById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Tournament dengan ID " + id + " tidak ditemukan"));
+    }
+}
+```
+
+#### DTO request dan response
+
+```java
+public record TournamentV2Request(
+        @NotBlank String name,
+        @NotBlank String game,
+        String description,
+        @NotBlank
+        @Pattern(regexp = "DRAFT|PUBLISHED|ONGOING|COMPLETED|CANCELLED")
+        String status,
+        @NotNull OffsetDateTime startsAt,
+        @NotNull OffsetDateTime endsAt
+) {
+}
+```
+
+```java
+public record TournamentV2Response(
+        Long id,
+        String name,
+        String game,
+        String description,
+        String status,
+        OffsetDateTime startsAt,
+        OffsetDateTime endsAt,
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt
+) {
+}
+```
+
+#### Mapper v2
+
+Mapper memetakan field kontrak v2 ke kolom entity v1, sehingga kedua versi memakai data yang sama.
+
+```java
+static TournamentV2Response toResponse(Tournament entity) {
+    return new TournamentV2Response(
+            entity.getId(),
+            entity.getName(),
+            entity.getGameTitle(),
+            entity.getDescription(),
+            entity.getStatus(),
+            toOffsetDateTime(entity.getStartDate()),
+            toOffsetDateTime(entity.getEndDate()),
+            entity.getCreatedAt(),
+            entity.getUpdatedAt()
+    );
+}
+
+static Tournament toEntity(TournamentV2Request request) {
+    Tournament entity = new Tournament();
+    entity.setName(request.name());
+    entity.setGameTitle(request.game());
+    entity.setDescription(request.description());
+    entity.setStatus(request.status());
+    entity.setStartDate(toLocalDate(request.startsAt()));
+    entity.setEndDate(toLocalDate(request.endsAt()));
+    return entity;
+}
+```
+
+#### Pagination envelope
+
+```java
+public record PageResponse<T>(
+        List<T> data,
+        int page,
+        int size,
+        long totalElements,
+        int totalPages
+) {
+    public static <T> PageResponse<T> from(Page<T> page) {
+        return new PageResponse<>(
+                page.getContent(),
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+    }
+}
+```
+
+#### Penanganan error v2
+
+`ApiExceptionHandler` dibatasi pada paket v2 sehingga format error v1 tidak berubah.
+
+```java
+@RestControllerAdvice(basePackages = "id.tournex.tournament.v2")
+public class ApiExceptionHandler {
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(
+            ResponseStatusException exception, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.resolve(exception.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                codeFor(status),
+                exception.getReason(),
+                List.of(),
+                OffsetDateTime.now(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(
+            MethodArgumentNotValidException exception, HttpServletRequest request) {
+        List<ErrorResponse.FieldError> details = exception.getBindingResult().getFieldErrors().stream()
+                .map(error -> new ErrorResponse.FieldError(error.getField(), error.getDefaultMessage()))
+                .toList();
+        return ResponseEntity.badRequest().body(new ErrorResponse(
+                "VALIDATION_ERROR",
+                "Permintaan tidak valid",
+                details,
+                OffsetDateTime.now(),
+                request.getRequestURI()
+        ));
+    }
+}
+```
+
+#### Perbedaan implementasi per service
+
+| Aspek | Tournament | Team | Match |
+| :--- | :--- | :--- | :--- |
+| Base path | `/api/v2/tournaments` | `/api/v2/teams` | `/api/v2/matches` |
+| Field yang dipetakan | `game`, `startsAt`, `endsAt` | `shortName`, `game` | `startsAt` |
+| Filter GET list | `status`, `game` | `game` | `tournamentId`, `status` |
+| DTO | `TournamentV2Request` / `Response` | `TeamV2Request` / `Response` | `MatchV2Request` / `Response` |
+| Repository query | `findByStatus`, `findByGameTitle`, `findByStatusAndGameTitle` | `findByGameTitle` | `findByTournamentId`, `findByStatus`, `findByTournamentIdAndStatus` |
+
+#### Hasil pengujian v2
+
+| Service | Tes v1 | Tes v2 | Total | Hasil |
+| :--- | ---: | ---: | ---: | :--- |
+| Tournament | 10 | 5 | 15 | Lulus |
+| Team | 10 | 5 | 15 | Lulus |
+| Match | 10 | 5 | 15 | Lulus |
+| **Total** | **30** | **15** | **45** | **Lulus** |
+
+Perintah pengujian:
+
+```powershell
+.\mvnw.cmd -B clean test
+```
+
+---
+
 ## KESESUAIAN IMPLEMENTASI DENGAN RANCANGAN
 
 | Rancangan | Implementasi | Kesesuaian |
@@ -913,6 +1177,10 @@ $r.StatusCode
 | Dokumentasi OpenAPI | `@Operation` dan `@ApiResponses` + `/v3/api-docs` | Sesuai |
 | Pengujian otomatis GET/POST | 3 tes per service menggunakan `MockMvc` | Sesuai |
 | Pengujian otomatis PUT/PATCH/DELETE | 7 tes per service menggunakan `MockMvc` | Sesuai |
+| GET/POST `/api/v2` | `TournamentV2Controller`, `TeamV2Controller`, `MatchV2Controller` | Sesuai |
+| Pagination dan envelope v2 | `PageResponse.from(Page)` | Sesuai |
+| Error response seragam v2 | `ApiExceptionHandler` pada paket v2 | Sesuai |
+| Pemetaan field v2 | `TournamentV2Mapper`, `TeamV2Mapper`, `MatchV2Mapper` | Sesuai |
 
 ---
 
@@ -924,3 +1192,5 @@ $r.StatusCode
 4. **Penyimpanan data.** Setiap service menggunakan H2 in-memory dengan `ddl-auto=create-drop`, sehingga data hilang ketika aplikasi dihentikan.
 5. **Cakupan deployment.** Konfigurasi saat ini ditujukan untuk pengembangan lokal dan CI. Autentikasi, API Gateway, komunikasi antar-service, serta database persisten belum termasuk dalam iterasi ini.
 6. **Screenshot pengujian.** Gambar pada bagian pengujian masih berupa *placeholder* di `docs/screenshots/`. Ganti file tersebut dengan tangkapan layar asli setelah menjalankan service dan Swagger UI.
+7. **Cakupan v2.0.** Implementasi v2.0 baru mencakup operasi GET dan POST. Operasi PUT, PATCH, dan DELETE untuk v2.0 direncanakan pada iterasi berikutnya.
+8. **Sumber data v1 dan v2.** v2 memakai tabel yang sama dengan v1 melalui mapper, sehingga data yang dibuat lewat v1 dapat dibaca lewat v2 dan sebaliknya. Status pada v2 divalidasi menggunakan pola; data lama v1 dengan status di luar daftar enum tetap dapat dibaca.

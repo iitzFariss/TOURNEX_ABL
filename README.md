@@ -143,13 +143,45 @@ Content-Type: application/json
 DELETE http://localhost:8083/api/v1/matches/1
 ```
 
+### API versi 2.0 (GET dan POST)
+
+API v2 tersedia berdampingan dengan v1 pada base path `/api/v2`. Daftar data memakai pagination dan envelope `data`, `page`, `size`, `totalElements`, `totalPages`.
+
+```http
+GET http://localhost:8081/api/v2/tournaments?page=0&size=20&status=DRAFT
+```
+```json
+{
+  "data": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0
+}
+```
+
+```http
+POST http://localhost:8081/api/v2/tournaments
+Content-Type: application/json
+```
+```json
+{
+  "name": "TOURNEX Invitational",
+  "game": "VALORANT",
+  "description": "Turnamen komunitas",
+  "status": "DRAFT",
+  "startsAt": "2026-12-01T09:00:00Z",
+  "endsAt": "2026-12-05T18:00:00Z"
+}
+```
+
 ID pada tiap service dibuat otomatis oleh database. Pada iterasi ini `tournamentId`, `teamAId`, dan `teamBId` di Match disimpan sebagai referensi ID; validasi lintas-service belum dilakukan. H2 bersifat in-memory sehingga data akan kembali kosong ketika aplikasi dihentikan.
 
 ## Pengujian
 Setiap modul memiliki pengujian integrasi berbasis JUnit 5 + Spring Boot Test + MockMvc untuk memeriksa GET, POST, dan pengambilan detail. Jalankan `mvn clean test` dari root. Struktur ini dapat dijalankan dalam pipeline CI/CD Maven.
 
 ## Batasan iterasi
-Iterasi ini mengimplementasikan API v1.0 untuk GET, POST, PUT, PATCH, dan DELETE. API versi baru dengan breaking changes, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
+Iterasi ini mengimplementasikan API v1.0 untuk GET, POST, PUT, PATCH, dan DELETE, serta API v2.0 untuk GET dan POST. Operasi PUT, PATCH, dan DELETE pada v2.0, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
 
 ## Catatan model data
 Dokumen Tahap 1 menetapkan tiga service, tetapi belum merinci atribut tiap entitas. Karena itu, field pada contoh di atas merupakan rancangan awal yang eksplisit dan dapat disesuaikan dengan kesepakatan tim.
