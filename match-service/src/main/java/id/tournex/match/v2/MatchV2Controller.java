@@ -82,6 +82,51 @@ public class MatchV2Controller {
                 .body(MatchV2Mapper.toResponse(saved));
     }
 
+    @PutMapping("/{id}")
+    @Operation(summary = "Mengganti seluruh data pertandingan")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Pertandingan berhasil diperbarui"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Pertandingan tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public MatchV2Response update(
+            @PathVariable Long id,
+            @Valid @RequestBody MatchV2Request request) {
+        Match existing = findById(id);
+        MatchV2Mapper.applyRequest(existing, request);
+        return MatchV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @PatchMapping(value = "/{id}", consumes = "application/merge-patch+json")
+    @Operation(summary = "Memperbarui sebagian data pertandingan")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Pertandingan berhasil diperbarui sebagian"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Pertandingan tidak ditemukan"),
+        @ApiResponse(responseCode = "415", description = "Media type tidak didukung"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public MatchV2Response patch(
+            @PathVariable Long id,
+            @Valid @RequestBody MatchV2PatchRequest request) {
+        Match existing = findById(id);
+        MatchV2Mapper.applyPatch(existing, request);
+        return MatchV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Menghapus pertandingan berdasarkan ID")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Pertandingan berhasil dihapus"),
+        @ApiResponse(responseCode = "404", description = "Pertandingan tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public void delete(@PathVariable Long id) {
+        repository.delete(findById(id));
+    }
+
     private Match findById(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(

@@ -40,6 +40,44 @@ final class MatchV2Mapper {
         return entity;
     }
 
+    static void applyRequest(Match entity, MatchV2Request request) {
+        entity.setTournamentId(request.tournamentId());
+        entity.setTeamAId(request.teamAId());
+        entity.setTeamBId(request.teamBId());
+        entity.setScheduledAt(toLocalDateTime(request.startsAt()));
+        entity.setStatus(request.status());
+        entity.setWinnerTeamId(request.winnerTeamId());
+        entity.setScoreTeamA(request.scoreTeamA());
+        entity.setScoreTeamB(request.scoreTeamB());
+    }
+
+    static void applyPatch(Match entity, MatchV2PatchRequest patch) {
+        if (patch.tournamentId() != null) {
+            entity.setTournamentId(patch.tournamentId());
+        }
+        if (patch.teamAId() != null) {
+            entity.setTeamAId(patch.teamAId());
+        }
+        if (patch.teamBId() != null) {
+            entity.setTeamBId(patch.teamBId());
+        }
+        if (patch.startsAt() != null) {
+            entity.setScheduledAt(toLocalDateTime(patch.startsAt()));
+        }
+        if (patch.status() != null) {
+            entity.setStatus(patch.status());
+        }
+        if (patch.winnerTeamId() != null) {
+            entity.setWinnerTeamId(patch.winnerTeamId());
+        }
+        if (patch.scoreTeamA() != null) {
+            entity.setScoreTeamA(patch.scoreTeamA());
+        }
+        if (patch.scoreTeamB() != null) {
+            entity.setScoreTeamB(patch.scoreTeamB());
+        }
+    }
+
     private static OffsetDateTime toOffsetDateTime(LocalDateTime dateTime) {
         return dateTime == null ? null : dateTime.atOffset(ZoneOffset.UTC);
     }

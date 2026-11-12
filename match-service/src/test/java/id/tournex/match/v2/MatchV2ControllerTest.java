@@ -72,6 +72,97 @@ class MatchV2ControllerTest {
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
+    private static final MediaType MERGE_PATCH = MediaType.parseMediaType("application/merge-patch+json");
+
+    @Test
+    void putUpdatesAllFieldsAndReturns200() throws Exception {
+        long id = create();
+        mockMvc.perform(put("/api/v2/matches/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"tournamentId\":2,\"teamAId\":3,\"teamBId\":4,\"startsAt\":\"2027-01-01T19:00:00Z\",\"status\":\"ONGOING\",\"scoreTeamA\":1,\"scoreTeamB\":0}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id))
+            .andExpect(jsonPath("$.tournamentId").value(2))
+            .andExpect(jsonPath("$.teamAId").value(3))
+            .andExpect(jsonPath("$.status").value("ONGOING"));
+    }
+
+    @Test
+    void putUnknownIdReturns404() throws Exception {
+        mockMvc.perform(put("/api/v2/matches/999999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_BODY))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void putInvalidBodyReturns400() throws Exception {
+        mockMvc.perform(put("/api/v2/matches/1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"tournamentId\":0,\"teamAId\":0,\"teamBId\":0,\"startsAt\":null,\"status\":\"INVALID\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void patchUpdatesOnlyProvidedFieldAndReturns200() throws Exception {
+        long id = create();
+        mockMvc.perform(patch("/api/v2/matches/" + id)
+                .contentType(MERGE_PATCH)
+                .content("{\"scoreTeamA\":2}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id))
+            .andExpect(jsonPath("$.scoreTeamA").value(2))
+            .andExpect(jsonPath("$.status").value("SCHEDULED"))
+            .andExpect(jsonPath("$.tournamentId").value(1));
+    }
+
+    @Test
+    void patchUnknownIdReturns404() throws Exception {
+        mockMvc.perform(patch("/api/v2/matches/999999")
+                .contentType(MERGE_PATCH)
+                .content("{\"status\":\"FINISHED\"}"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void patchWithWrongContentTypeReturns415() throws Exception {
+        long id = create();
+        // Ketidakcocokan atribut consumes dideteksi Spring sebelum controller
+        // dipanggil, sehingga body respons kosong.
+        mockMvc.perform(patch("/api/v2/matches/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"FINISHED\"}"))
+            .andExpect(status().isUnsupportedMediaType());
+    }
+
+    @Test
+    void postWithUnsupportedContentTypeReturns415WithErrorBody() throws Exception {
+        mockMvc.perform(post("/api/v2/matches")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(VALID_BODY))
+            .andExpect(status().isUnsupportedMediaType())
+            .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void deleteRemovesResourceAndReturns204() throws Exception {
+        long id = create();
+        mockMvc.perform(delete("/api/v2/matches/" + id))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v2/matches/" + id))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        mockMvc.perform(delete("/api/v2/matches/999999"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
     private long create() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v2/matches")
                 .contentType(MediaType.APPLICATION_JSON)

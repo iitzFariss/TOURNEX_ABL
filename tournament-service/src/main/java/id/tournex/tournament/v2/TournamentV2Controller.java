@@ -82,6 +82,51 @@ public class TournamentV2Controller {
                 .body(TournamentV2Mapper.toResponse(saved));
     }
 
+    @PutMapping("/{id}")
+    @Operation(summary = "Mengganti seluruh data turnamen")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Turnamen berhasil diperbarui"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public TournamentV2Response update(
+            @PathVariable Long id,
+            @Valid @RequestBody TournamentV2Request request) {
+        Tournament existing = findById(id);
+        TournamentV2Mapper.applyRequest(existing, request);
+        return TournamentV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @PatchMapping(value = "/{id}", consumes = "application/merge-patch+json")
+    @Operation(summary = "Memperbarui sebagian data turnamen")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Turnamen berhasil diperbarui sebagian"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+        @ApiResponse(responseCode = "415", description = "Media type tidak didukung"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public TournamentV2Response patch(
+            @PathVariable Long id,
+            @Valid @RequestBody TournamentV2PatchRequest request) {
+        Tournament existing = findById(id);
+        TournamentV2Mapper.applyPatch(existing, request);
+        return TournamentV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Menghapus turnamen berdasarkan ID")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Turnamen berhasil dihapus"),
+        @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public void delete(@PathVariable Long id) {
+        repository.delete(findById(id));
+    }
+
     private Tournament findById(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(

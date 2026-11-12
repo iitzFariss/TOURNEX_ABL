@@ -143,7 +143,7 @@ Content-Type: application/json
 DELETE http://localhost:8083/api/v1/matches/1
 ```
 
-### API versi 2.0 (GET dan POST)
+### API versi 2.0 (GET, POST, PUT, PATCH, DELETE)
 
 API v2 tersedia berdampingan dengan v1 pada base path `/api/v2`. Daftar data memakai pagination dan envelope `data`, `page`, `size`, `totalElements`, `totalPages`.
 
@@ -175,13 +175,45 @@ Content-Type: application/json
 }
 ```
 
-ID pada tiap service dibuat otomatis oleh database. Pada iterasi ini `tournamentId`, `teamAId`, dan `teamBId` di Match disimpan sebagai referensi ID; validasi lintas-service belum dilakukan. H2 bersifat in-memory sehingga data akan kembali kosong ketika aplikasi dihentikan.
+PUT mengganti seluruh data, sehingga semua field wajib dikirim:
+
+```http
+PUT http://localhost:8081/api/v2/tournaments/1
+Content-Type: application/json
+```
+```json
+{
+  "name": "TOURNEX Invitational",
+  "game": "DOTA2",
+  "description": "Turnamen komunitas",
+  "status": "PUBLISHED",
+  "startsAt": "2026-12-02T09:00:00Z",
+  "endsAt": "2026-12-06T18:00:00Z"
+}
+```
+
+PATCH hanya mengubah field yang dikirim dan memakai media type khusus:
+
+```http
+PATCH http://localhost:8081/api/v2/tournaments/1
+Content-Type: application/merge-patch+json
+```
+```json
+{
+  "status": "ONGOING"
+}
+```
+
+```http
+DELETE http://localhost:8081/api/v2/tournaments/1
+```
+DELETE mengembalikan `204 No Content`. ID pada tiap service dibuat otomatis oleh database. Pada iterasi ini `tournamentId`, `teamAId`, dan `teamBId` di Match disimpan sebagai referensi ID; validasi lintas-service belum dilakukan. H2 bersifat in-memory sehingga data akan kembali kosong ketika aplikasi dihentikan.
 
 ## Pengujian
-Setiap modul memiliki pengujian integrasi berbasis JUnit 5 + Spring Boot Test + MockMvc untuk memeriksa GET, POST, dan pengambilan detail. Jalankan `mvn clean test` dari root. Struktur ini dapat dijalankan dalam pipeline CI/CD Maven.
+Setiap modul memiliki pengujian integrasi berbasis JUnit 5 + Spring Boot Test + MockMvc untuk memeriksa GET, POST, PUT, PATCH, DELETE, dan pengambilan detail. Jalankan `mvn clean test` dari root. Struktur ini dapat dijalankan dalam pipeline CI/CD Maven.
 
 ## Batasan iterasi
-Iterasi ini mengimplementasikan API v1.0 untuk GET, POST, PUT, PATCH, dan DELETE, serta API v2.0 untuk GET dan POST. Operasi PUT, PATCH, dan DELETE pada v2.0, API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
+Iterasi ini mengimplementasikan API v1.0 dan v2.0 untuk GET, POST, PUT, PATCH, dan DELETE. API Gateway, autentikasi, dan komunikasi sinkron antarservice belum termasuk cakupan iterasi ini.
 
 ## Catatan model data
 Dokumen Tahap 1 menetapkan tiga service, tetapi belum merinci atribut tiap entitas. Karena itu, field pada contoh di atas merupakan rancangan awal yang eksplisit dan dapat disesuaikan dengan kesepakatan tim.

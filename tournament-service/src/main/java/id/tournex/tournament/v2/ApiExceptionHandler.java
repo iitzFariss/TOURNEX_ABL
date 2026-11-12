@@ -4,9 +4,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
@@ -58,6 +60,32 @@ public class ApiExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(new ErrorResponse(
+                "UNSUPPORTED_MEDIA_TYPE",
+                "Media type tidak didukung. Gunakan application/json untuk POST dan PUT, "
+                        + "serta application/merge-patch+json untuk PATCH",
+                List.of(),
+                OffsetDateTime.now(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(
+                "VALIDATION_ERROR",
+                "Parameter '" + exception.getName() + "' tidak valid",
+                List.of(new ErrorResponse.FieldError(
+                        exception.getName(), "Nilai parameter tidak sesuai tipe data")),
+                OffsetDateTime.now(),
+                request.getRequestURI()
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneral(
             Exception exception, HttpServletRequest request) {
@@ -75,6 +103,7 @@ public class ApiExceptionHandler {
             case BAD_REQUEST -> "VALIDATION_ERROR";
             case NOT_FOUND -> "NOT_FOUND";
             case CONFLICT -> "CONFLICT";
+            case UNSUPPORTED_MEDIA_TYPE -> "UNSUPPORTED_MEDIA_TYPE";
             default -> "INTERNAL_ERROR";
         };
     }

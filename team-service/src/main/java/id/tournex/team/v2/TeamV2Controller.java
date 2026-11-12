@@ -74,6 +74,51 @@ public class TeamV2Controller {
                 .body(TeamV2Mapper.toResponse(saved));
     }
 
+    @PutMapping("/{id}")
+    @Operation(summary = "Mengganti seluruh data tim")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Tim berhasil diperbarui"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Tim tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public TeamV2Response update(
+            @PathVariable Long id,
+            @Valid @RequestBody TeamV2Request request) {
+        Team existing = findById(id);
+        TeamV2Mapper.applyRequest(existing, request);
+        return TeamV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @PatchMapping(value = "/{id}", consumes = "application/merge-patch+json")
+    @Operation(summary = "Memperbarui sebagian data tim")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Tim berhasil diperbarui sebagian"),
+        @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+        @ApiResponse(responseCode = "404", description = "Tim tidak ditemukan"),
+        @ApiResponse(responseCode = "415", description = "Media type tidak didukung"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public TeamV2Response patch(
+            @PathVariable Long id,
+            @Valid @RequestBody TeamV2PatchRequest request) {
+        Team existing = findById(id);
+        TeamV2Mapper.applyPatch(existing, request);
+        return TeamV2Mapper.toResponse(repository.save(existing));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Menghapus tim berdasarkan ID")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Tim berhasil dihapus"),
+        @ApiResponse(responseCode = "404", description = "Tim tidak ditemukan"),
+        @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+    })
+    public void delete(@PathVariable Long id) {
+        repository.delete(findById(id));
+    }
+
     private Team findById(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(

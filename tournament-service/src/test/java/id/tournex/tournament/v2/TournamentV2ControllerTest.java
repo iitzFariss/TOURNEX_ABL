@@ -72,6 +72,97 @@ class TournamentV2ControllerTest {
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
+    private static final MediaType MERGE_PATCH = MediaType.parseMediaType("application/merge-patch+json");
+
+    @Test
+    void putUpdatesAllFieldsAndReturns200() throws Exception {
+        long id = create();
+        mockMvc.perform(put("/api/v2/tournaments/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"TOURNEX Updated\",\"game\":\"DOTA2\",\"description\":\"put\",\"status\":\"PUBLISHED\",\"startsAt\":\"2027-01-01T09:00:00Z\",\"endsAt\":\"2027-01-03T18:00:00Z\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id))
+            .andExpect(jsonPath("$.name").value("TOURNEX Updated"))
+            .andExpect(jsonPath("$.game").value("DOTA2"))
+            .andExpect(jsonPath("$.status").value("PUBLISHED"));
+    }
+
+    @Test
+    void putUnknownIdReturns404() throws Exception {
+        mockMvc.perform(put("/api/v2/tournaments/999999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_BODY))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void putInvalidBodyReturns400() throws Exception {
+        mockMvc.perform(put("/api/v2/tournaments/1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"\",\"game\":\"\",\"status\":\"INVALID\",\"startsAt\":null,\"endsAt\":null}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void patchUpdatesOnlyProvidedFieldAndReturns200() throws Exception {
+        long id = create();
+        mockMvc.perform(patch("/api/v2/tournaments/" + id)
+                .contentType(MERGE_PATCH)
+                .content("{\"description\":\"diubah lewat patch\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id))
+            .andExpect(jsonPath("$.description").value("diubah lewat patch"))
+            .andExpect(jsonPath("$.name").value("TOURNEX V2"))
+            .andExpect(jsonPath("$.game").value("VALORANT"));
+    }
+
+    @Test
+    void patchUnknownIdReturns404() throws Exception {
+        mockMvc.perform(patch("/api/v2/tournaments/999999")
+                .contentType(MERGE_PATCH)
+                .content("{\"name\":\"X\"}"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void patchWithWrongContentTypeReturns415() throws Exception {
+        long id = create();
+        // Ketidakcocokan atribut consumes dideteksi Spring sebelum controller
+        // dipanggil, sehingga body respons kosong.
+        mockMvc.perform(patch("/api/v2/tournaments/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"X\"}"))
+            .andExpect(status().isUnsupportedMediaType());
+    }
+
+    @Test
+    void postWithUnsupportedContentTypeReturns415WithErrorBody() throws Exception {
+        mockMvc.perform(post("/api/v2/tournaments")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(VALID_BODY))
+            .andExpect(status().isUnsupportedMediaType())
+            .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void deleteRemovesResourceAndReturns204() throws Exception {
+        long id = create();
+        mockMvc.perform(delete("/api/v2/tournaments/" + id))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v2/tournaments/" + id))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        mockMvc.perform(delete("/api/v2/tournaments/999999"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
     private long create() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v2/tournaments")
                 .contentType(MediaType.APPLICATION_JSON)

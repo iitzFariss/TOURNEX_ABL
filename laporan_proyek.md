@@ -1161,6 +1161,228 @@ Perintah pengujian:
 
 ---
 
+## IMPLEMENTASI API VERSI 2.0 (PUT, PATCH, DELETE)
+
+Implementasi v2.0 dilengkapi dengan operasi **PUT**, **PATCH**, dan **DELETE** pada ketiga service. Seperti pada GET dan POST, kode ditempatkan di paket `v2` sehingga v1.0 tidak berubah. Ketiga operasi memakai entity dan tabel yang sama dengan v1.0 melalui mapper.
+
+### Build Properties
+
+Tidak ada perubahan pada `pom.xml`. Seluruh kebutuhan PUT, PATCH, dan DELETE sudah tersedia dari dependency yang dipakai sebelumnya:
+
+| Kebutuhan v2 | Penyedia |
+| :--- | :--- |
+| `@PutMapping`, `@PatchMapping`, `@DeleteMapping` | `spring-boot-starter-web` |
+| Parsing `Content-Type: application/merge-patch+json` | `MappingJackson2HttpMessageConverter` (mendukung `application/*+json`) |
+| Validasi body PUT/PATCH (`@Valid`, `@Pattern`, `@Positive`) | `spring-boot-starter-validation` |
+| `@ResponseStatus(HttpStatus.NO_CONTENT)` untuk DELETE | `spring-boot-starter-web` |
+
+Karena `application/merge-patch+json` sudah dikenali oleh konverter Jackson bawaan, tidak diperlukan dependency atau konfigurasi tambahan.
+
+### Konfigurasi Deployment
+
+Tidak ada perubahan pada `application.properties` maupun port. Yang bertambah hanya route pada controller:
+
+| Service | Port | Endpoint baru |
+| :--- | ---: | :--- |
+| Tournament | 8081 | `PUT`, `PATCH`, `DELETE` `/api/v2/tournaments/{id}` |
+| Team | 8082 | `PUT`, `PATCH`, `DELETE` `/api/v2/teams/{id}` |
+| Match | 8083 | `PUT`, `PATCH`, `DELETE` `/api/v2/matches/{id}` |
+
+Ketiga endpoint otomatis muncul pada `/v3/api-docs` dan Swagger UI. Hasil verifikasi pada tournament-service menunjukkan method `put`, `patch`, dan `delete` terdaftar pada path `/api/v2/tournaments/{id}`, serta schema `TournamentV2PatchRequest` tersedia.
+
+### Kode Sumber Utama PUT, PATCH, DELETE
+
+#### Kontrak perilaku
+
+| Operasi | Body | Sukses | Error |
+| :--- | :--- | ---: | :--- |
+| PUT | `*V2Request` lengkap | `200` + resource | `400`, `404`, `500` |
+| PATCH | `*V2PatchRequest` sebagian, `Content-Type: application/merge-patch+json` | `200` + resource | `400`, `404`, `415`, `500` |
+| DELETE | — | `204` tanpa body | `404`, `500` |
+
+Keputusan desain:
+
+1. **PUT bersifat replace penuh.** Seluruh field wajib dikirim; field yang tidak dikirim ditolak `400` oleh validasi DTO.
+2. **PATCH bersifat merge patch sederhana.** Hanya field non-null yang diubah. `null` eksplisit diperlakukan sama dengan "tidak dikirim", karena membedakan *absent* dan *null* memerlukan dependency tambahan.
+3. **ID diambil dari path**, sehingga tidak dapat diubah lewat body. `createdAt` dipertahankan, sedangkan `updatedAt` diperbarui otomatis oleh `@PreUpdate`.
+
+#### `TournamentV2Controller.java` — method PUT, PATCH, DELETE
+
+```java
+@PutMapping("/{id}")
+@Operation(summary = "Mengganti seluruh data turnamen")
+@ApiResponses({
+    @ApiResponse(responseCode = "200", description = "Turnamen berhasil diperbarui"),
+    @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+    @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+    @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+})
+public TournamentV2Response update(
+        @PathVariable Long id,
+        @Valid @RequestBody TournamentV2Request request) {
+    Tournament existing = findById(id);
+    TournamentV2Mapper.applyRequest(existing, request);
+    return TournamentV2Mapper.toResponse(repository.save(existing));
+}
+
+@PatchMapping(value = "/{id}", consumes = "application/merge-patch+json")
+@Operation(summary = "Memperbarui sebagian data turnamen")
+@ApiResponses({
+    @ApiResponse(responseCode = "200", description = "Turnamen berhasil diperbarui sebagian"),
+    @ApiResponse(responseCode = "400", description = "Permintaan tidak valid"),
+    @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+    @ApiResponse(responseCode = "415", description = "Media type tidak didukung"),
+    @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+})
+public TournamentV2Response patch(
+        @PathVariable Long id,
+        @Valid @RequestBody TournamentV2PatchRequest request) {
+    Tournament existing = findById(id);
+    TournamentV2Mapper.applyPatch(existing, request);
+    return TournamentV2Mapper.toResponse(repository.save(existing));
+}
+
+@DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+@Operation(summary = "Menghapus turnamen berdasarkan ID")
+@ApiResponses({
+    @ApiResponse(responseCode = "204", description = "Turnamen berhasil dihapus"),
+    @ApiResponse(responseCode = "404", description = "Turnamen tidak ditemukan"),
+    @ApiResponse(responseCode = "500", description = "Kesalahan pada server")
+})
+public void delete(@PathVariable Long id) {
+    repository.delete(findById(id));
+}
+```
+
+#### DTO patch
+
+DTO patch berisi field yang sama dengan DTO request, tetapi seluruhnya opsional. Anotasi `@Pattern` dan `@Positive` otomatis lolos ketika nilainya `null`, sehingga PATCH parsial tetap valid.
+
+```java
+public record TournamentV2PatchRequest(
+        String name,
+        String game,
+        String description,
+        @Pattern(regexp = "DRAFT|PUBLISHED|ONGOING|COMPLETED|CANCELLED") String status,
+        OffsetDateTime startsAt,
+        OffsetDateTime endsAt
+) {
+}
+```
+
+#### Mapper — `applyRequest` dan `applyPatch`
+
+```java
+static void applyRequest(Tournament entity, TournamentV2Request request) {
+    entity.setName(request.name());
+    entity.setGameTitle(request.game());
+    entity.setDescription(request.description());
+    entity.setStatus(request.status());
+    entity.setStartDate(toLocalDate(request.startsAt()));
+    entity.setEndDate(toLocalDate(request.endsAt()));
+}
+
+static void applyPatch(Tournament entity, TournamentV2PatchRequest patch) {
+    if (patch.name() != null) {
+        entity.setName(patch.name());
+    }
+    if (patch.game() != null) {
+        entity.setGameTitle(patch.game());
+    }
+    if (patch.description() != null) {
+        entity.setDescription(patch.description());
+    }
+    if (patch.status() != null) {
+        entity.setStatus(patch.status());
+    }
+    if (patch.startsAt() != null) {
+        entity.setStartDate(toLocalDate(patch.startsAt()));
+    }
+    if (patch.endsAt() != null) {
+        entity.setEndDate(toLocalDate(patch.endsAt()));
+    }
+}
+```
+
+#### Perubahan `ApiExceptionHandler.java`
+
+Dua handler ditambahkan agar status yang dihasilkan sesuai:
+
+```java
+@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+public ResponseEntity<ErrorResponse> handleUnsupportedMediaType(
+        HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+    return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(new ErrorResponse(
+            "UNSUPPORTED_MEDIA_TYPE",
+            "Media type tidak didukung. Gunakan application/json untuk POST dan PUT, "
+                    + "serta application/merge-patch+json untuk PATCH",
+            List.of(),
+            OffsetDateTime.now(),
+            request.getRequestURI()
+    ));
+}
+
+@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+public ResponseEntity<ErrorResponse> handleTypeMismatch(
+        MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
+    return ResponseEntity.badRequest().body(new ErrorResponse(
+            "VALIDATION_ERROR",
+            "Parameter '" + exception.getName() + "' tidak valid",
+            List.of(new ErrorResponse.FieldError(
+                    exception.getName(), "Nilai parameter tidak sesuai tipe data")),
+            OffsetDateTime.now(),
+            request.getRequestURI()
+    ));
+}
+```
+
+Tanpa kedua handler tersebut, kedua exception akan ditangkap `@ExceptionHandler(Exception.class)` dan dikembalikan sebagai `500`, sehingga status menjadi tidak akurat.
+
+#### Perbedaan implementasi per service
+
+| Aspek | Tournament | Team | Match |
+| :--- | :--- | :--- | :--- |
+| Base path | `/api/v2/tournaments` | `/api/v2/teams` | `/api/v2/matches` |
+| Field yang diubah PUT | `name`, `game`, `description`, `status`, `startsAt`, `endsAt` | `name`, `shortName`, `game`, `description` | 8 field (termasuk 3 ID relasi dan skor) |
+| Field patch | 6 field opsional | 4 field opsional | 8 field opsional |
+| Validasi khusus PATCH | `@Pattern` pada `status` | — | `@Positive` pada 3 ID, `@Pattern` pada `status` |
+| Konversi tanggal | `OffsetDateTime` → `LocalDate` | tidak ada | `OffsetDateTime` → `LocalDateTime` |
+| Pesan 404 | "Tournament dengan ID …" | "Team dengan ID …" | "Match dengan ID …" |
+
+Ketiga service memakai pola yang sama: `findById` → `apply*` → `save` → `toResponse`. Perbedaan hanya pada field domain, aturan validasi, dan konversi tipe tanggal.
+
+### Hasil pengujian v2 PUT, PATCH, DELETE
+
+Sembilan tes ditambahkan per service:
+
+| No | Tes | Ekspektasi |
+| ---: | :--- | :--- |
+| 1 | PUT dengan body lengkap | `200`, seluruh field berubah |
+| 2 | PUT dengan ID tidak ada | `404`, `code: NOT_FOUND` |
+| 3 | PUT dengan body tidak valid | `400`, `code: VALIDATION_ERROR` |
+| 4 | PATCH satu field saja | `200`, field lain tidak berubah |
+| 5 | PATCH dengan ID tidak ada | `404` |
+| 6 | PATCH dengan `application/json` | `415` |
+| 7 | POST dengan `text/plain` | `415` + `code: UNSUPPORTED_MEDIA_TYPE` |
+| 8 | DELETE resource yang ada | `204`, lalu `GET` mengembalikan `404` |
+| 9 | DELETE dengan ID tidak ada | `404` |
+
+| Service | Tes v1 | Tes v2 GET/POST | Tes v2 PUT/PATCH/DELETE | Total | Hasil |
+| :--- | ---: | ---: | ---: | ---: | :--- |
+| Tournament | 10 | 5 | 9 | 24 | Lulus |
+| Team | 10 | 5 | 9 | 24 | Lulus |
+| Match | 10 | 5 | 9 | 24 | Lulus |
+| **Total** | **30** | **15** | **27** | **72** | **Lulus** |
+
+Perintah pengujian:
+
+```powershell
+.\mvnw.cmd -B clean test
+```
+
+---
+
 ## KESESUAIAN IMPLEMENTASI DENGAN RANCANGAN
 
 | Rancangan | Implementasi | Kesesuaian |
@@ -1181,6 +1403,10 @@ Perintah pengujian:
 | Pagination dan envelope v2 | `PageResponse.from(Page)` | Sesuai |
 | Error response seragam v2 | `ApiExceptionHandler` pada paket v2 | Sesuai |
 | Pemetaan field v2 | `TournamentV2Mapper`, `TeamV2Mapper`, `MatchV2Mapper` | Sesuai |
+| PUT/PATCH/DELETE `/api/v2` | `update()`, `patch()`, `delete()` pada ketiga controller v2 | Sesuai |
+| PATCH `application/merge-patch+json` | `@PatchMapping(consumes = "application/merge-patch+json")` | Sesuai |
+| `204 No Content` pada DELETE v2 | `@ResponseStatus(HttpStatus.NO_CONTENT)` | Sesuai |
+| `415 Unsupported Media Type` | `ApiExceptionHandler.handleUnsupportedMediaType` | Sesuai |
 
 ---
 
@@ -1192,5 +1418,6 @@ Perintah pengujian:
 4. **Penyimpanan data.** Setiap service menggunakan H2 in-memory dengan `ddl-auto=create-drop`, sehingga data hilang ketika aplikasi dihentikan.
 5. **Cakupan deployment.** Konfigurasi saat ini ditujukan untuk pengembangan lokal dan CI. Autentikasi, API Gateway, komunikasi antar-service, serta database persisten belum termasuk dalam iterasi ini.
 6. **Screenshot pengujian.** Gambar pada bagian pengujian masih berupa *placeholder* di `docs/screenshots/`. Ganti file tersebut dengan tangkapan layar asli setelah menjalankan service dan Swagger UI.
-7. **Cakupan v2.0.** Implementasi v2.0 baru mencakup operasi GET dan POST. Operasi PUT, PATCH, dan DELETE untuk v2.0 direncanakan pada iterasi berikutnya.
+7. **Cakupan v2.0.** Implementasi v2.0 mencakup operasi GET, POST, PUT, PATCH, dan DELETE. PUT bersifat *replace* penuh, PATCH memakai `application/merge-patch+json` dengan semantik *merge patch* sederhana, dan DELETE mengembalikan `204 No Content`.
 8. **Sumber data v1 dan v2.** v2 memakai tabel yang sama dengan v1 melalui mapper, sehingga data yang dibuat lewat v1 dapat dibaca lewat v2 dan sebaliknya. Status pada v2 divalidasi menggunakan pola; data lama v1 dengan status di luar daftar enum tetap dapat dibaca.
+9. **Respons `415`.** Ketidakcocokan `Content-Type` pada PATCH dideteksi Spring saat pencocokan handler (atribut `consumes`) sebelum controller dipanggil, sehingga respons `415` tidak memiliki body. Respons `415` yang berasal dari konversi body tetap memakai format `ErrorResponse`.
